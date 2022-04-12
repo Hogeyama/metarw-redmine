@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "lib": [
+      "dom"
+    ]
+  },
+  "lint": {
+    "rules": {
+      "tags": [
+        "recommended"
+      ]
+    }
+  }
+}
