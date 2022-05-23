@@ -1,6 +1,6 @@
 // deno-lint-ignore-file camelcase
 import { IssuePut } from "./types.ts";
-import * as Yaml from "https://deno.land/std/encoding/yaml.ts";
+import * as Yaml from "https://deno.land/std@0.140.0/encoding/yaml.ts";
 import {
   assertNumber,
   assertObject,
