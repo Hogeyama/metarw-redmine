@@ -1,15 +1,12 @@
-
 local M = {}
-require("plenary.async").tests.add_to_env()
-local Semaphore = a.control.Semaphore
 
-local popup_opts = {
+local default_popup_opts = {
   position = "50%",
   size = {
     width = "60%",
     height = "60%"
   },
-  enter = false,
+  enter = true,
   focusable = true,
   zindex = 10,
   relative = "editor",
@@ -23,7 +20,7 @@ local popup_opts = {
   buf_options = {
     filetype = "diff",
     modifiable = true,
-    readonly = true,
+    readonly = false,
   },
   win_options = {
     winblend = 10,
@@ -35,17 +32,13 @@ local callDenops = function(fn, arg)
   return vim.fn['denops#request']('redmine', fn, {arg})
 end
 
-M.read = function(fakepath)
-  local issue_id = vim.fn['fnamemodify'](fakepath, ':t:r')
+M.read = function(issue_id)
   return callDenops('getIssue', {issueId = issue_id})
 end
 
-M.write = function(fakepath, line1, line2, append_p)
+M.write = function(issue_id, contents, confirm_by_input)
   local bufnr = vim.fn.bufnr("%")
-  local issue_id = vim.fn.fnamemodify(fakepath, ':t:r')
-  local contents = table.concat(vim.fn.getline(line1, line2), '\n')
 
-  -- TODO show diff and ask for confirmation
   local diff = callDenops('calcDiff', {
     issueId = issue_id,
     contents = contents,
@@ -54,15 +47,21 @@ M.write = function(fakepath, line1, line2, append_p)
     return
   end
 
-  -- plenary の Semaphore とかを使いたかったが、main thread で wait しようとするとエラーになってしまった。
-  -- 一旦諦めて、callback で put する。
-  local popup = require("nui.popup")(popup_opts)
+  local opt = vim.g.redmine_popup_opts or default_popup_opts
+  opt.enter = true
+  opt.focusable = true
+  opt.buf_options.filetype = "diff"
+  opt.buf_options.modifiable = true
+
+  local popup = require("nui.popup")(opt)
   local event = require("nui.utils.autocmd").event
   popup:mount()
+
+
   local reject = function()
     popup:unmount()
   end
-  local accepted = false
+
   local accept = function()
     callDenops('putIssue', {
       issueId = issue_id,
@@ -75,30 +74,43 @@ M.write = function(fakepath, line1, line2, append_p)
     vim.fn.setbufline(bufnr, 1, lines)
     vim.fn.deletebufline(bufnr, #lines + 1, '$')
     popup:unmount()
-    accepted = true
   end
-  popup:on(event.BufLeave, reject)
-  popup:map("n", "q", reject, { noremap = true })
+
+  local setup_popup = function(lines)
+    popup:on(event.BufLeave, reject)
+    popup:map("n", "Y", accept, {noremap = true})
+    popup:map("n", "q", reject, { noremap = true })
+    vim.api.nvim_buf_set_option(popup.bufnr, 'readonly', false)
+    vim.api.nvim_buf_set_lines(popup.bufnr, 0, 1, false, lines)
+    vim.api.nvim_buf_set_option(popup.bufnr, 'readonly', true)
+    vim.cmd("b " .. popup.bufnr)
+  end
+
   local diff_lines = vim.fn.split(diff .. '\n', '\n')
-  vim.api.nvim_buf_set_lines(popup.bufnr, 0, 1, false, diff_lines)
-  vim.api.nvim_buf_set_option(popup.bufnr, 'filetype', 'diff')
-  vim.cmd("b " .. popup.bufnr)
-  vim.ui.input(
-    {
-      prompt = '`Y` for accept, `p` for pending, other keys for reject',
-    },
-    function(input)
-      if input == "Y" then
-        accept()
-      else
-        if input == "p" then
-          return
+
+  if confirm_by_input then
+    setup_popup(diff_lines)
+    vim.ui.input(
+      {
+        prompt = '`Y` for accept, `p` for pending, other keys for reject',
+      },
+      function(input)
+        if input == "Y" then
+          accept()
         else
-          reject()
+          if input == "p" then
+            return
+          else
+            reject()
+          end
         end
       end
-    end
-  )
+    )
+  else
+    local lines = { "# Enter `Y` for accept, `q` for reject", "" }
+    vim.list_extend(lines, diff_lines)
+    setup_popup(lines)
+  end
 end
 
 return M

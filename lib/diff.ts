@@ -27,7 +27,7 @@ const shrinkPut = (x: IssuePut) => {
     project_id: x.project_id,
     tracker_id: x.tracker_id,
     status_id: x.status_id,
-    done_ratio: x.done_ratio,
+    // done_ratio: x.done_ratio,
     notes: x.notes,
   };
 };
